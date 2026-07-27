@@ -3,17 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Notifies a Discord channel when PandaDoc contracts are signed, and reminds the team about contracts left unsigned.",
+  "main": "index.js",
+  "engines": { "node": ">=18" },
   "scripts": {
-    "pandadoc": "tsx pandadoc/index.ts",
-    "test-notify": "tsx scripts/test-pandadoc-notify.ts"
-  },
-  "dependencies": {
-    "luxon": "^3.5.0",
-    "tsx": "^4.19.2"
-  },
-  "devDependencies": {
-    "@types/luxon": "^3.4.2",
-    "@types/node": "^20.14.10"
+    "start": "node index.js",
+    "pandadoc": "node index.js",
+    "test-notify": "node index.js --test"
   }
 }

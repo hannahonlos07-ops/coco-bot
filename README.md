@@ -1,53 +1,48 @@
 # PandaDoc → Discord contract notifier
 
-Notifies your team in a Discord channel about contract status, using your
-existing Discord bot:
+Notifies your team in Discord about contract status:
 
-- **✅ Signed** — the moment a client finishes signing a PandaDoc contract,
-  it posts a message with the client, amount, and time.
+- **✅ Signed** — the moment a client finishes signing a PandaDoc contract, it
+  posts a message with the client, amount, and time.
 - **⏰ Not signed yet** — if a contract sits unsigned longer than a threshold
   (default **8 hours**), it posts a follow-up reminder. Once per contract.
 
-You only run one thing: `npm run pandadoc`. Host it on any always-on service
-(Railway is the easy button).
+This version is **one plain JavaScript file, no dependencies, no build step** —
+Node runs it directly, so it deploys anywhere with zero fuss.
 
 ---
 
-## What you'll collect (4 values)
+## Files (that's all there is)
+
+```
+index.js         ← the whole bot
+package.json
+.env.example
+README.md
+```
+
+## The 4 values you'll need
 
 | # | Value | Where to get it |
 |---|-------|-----------------|
-| 1 | **Bot Token** | discord.com/developers → your app → **Bot** → Reset Token → Copy |
+| 1 | **Bot Token** | discord.com/developers → your app → **Bot** → Reset Token |
 | 2 | **Channel ID** | Discord → Settings → Advanced → **Developer Mode ON**, then right-click the channel → Copy Channel ID |
 | 3 | **PandaDoc API Key** | PandaDoc → Settings → **API** |
-| 4 | **Shared password** | You invent it (e.g. `MyContractBot-9f3Kq7`) — used to verify webhooks |
-
-You'll paste 1–4 into your host as **Variables**, the host gives you a **web
-address**, and you paste that address back into PandaDoc.
+| 4 | **Shared password** | You invent it (e.g. `MyContractBot-9f3Kq7`) |
 
 ---
 
 ## Setup
 
-### 1. Get this code into your own GitHub
+### 1. Put the files in your own GitHub repo
+Create a new empty repo (github.com → **New**), then **Add file → Upload files**
+and drop in `index.js`, `package.json`, `.env.example`, `README.md`. Commit.
+(Only 4 files at the top level — nothing to get wrong.)
 
-1. Create a new **empty** repo on your personal GitHub (github.com → **New**).
-   Don't add a README or .gitignore — leave it empty.
-2. On the new repo's page, click **"uploading an existing file"**.
-3. Unzip this project, then drag **all of its files and folders** into the
-   upload box (keep the folder structure). Commit.
-
-### 2. Deploy it on Railway
-
-1. Go to **railway.app**, log in with your GitHub account.
-2. **New Project → Deploy from GitHub repo →** pick your new repo.
-   - If it's not listed, click **"Configure GitHub App"** and grant Railway
-     access to it.
-3. Open the service → **Settings** → set **Start Command** to:
-   ```
-   npm run pandadoc
-   ```
-4. Open the **Variables** tab and add:
+### 2. Deploy on Railway
+1. railway.app → **New Project → Deploy from GitHub repo** → pick your repo.
+2. It should start on its own. (If you set a Start Command, use `npm start`.)
+3. **Variables** tab → add:
 
    | Name | Value |
    |------|-------|
@@ -57,54 +52,41 @@ address**, and you paste that address back into PandaDoc.
    | `PANDADOC_WEBHOOK_SHARED_KEY` | value **4** |
    | `PANDADOC_REMINDER_HOURS` | `8` (or `5`) |
 
-5. **Settings → Networking → Generate Domain.** Copy the address it gives you
-   (e.g. `https://your-app.up.railway.app`).
-6. Check the **Deploy Logs** — you should see
-   `pandadoc->discord worker listening on`. Visiting `<your-address>/health`
-   in a browser should say `pandadoc->discord worker ok`.
-
-> Your bot must already be a member of the server that channel is in, with
-> permission to post (Administrator covers this).
+4. **Settings → Networking → Generate Domain.** Copy the address.
+5. Check **Deploy Logs** for `pandadoc->discord worker listening on`. Visit
+   `<your-address>/health` — it should say `pandadoc->discord worker ok`.
 
 ### 3. Point PandaDoc at it
-
-1. PandaDoc → Settings → **API / Webhooks** → add a webhook.
+1. PandaDoc → Settings → **API → Webhooks** → add a webhook.
 2. **URL:** your Railway address **+ `/pandadoc/webhook`**, e.g.
    `https://your-app.up.railway.app/pandadoc/webhook`
-3. **Events:** check **`document_state_changed`**.
-4. **Shared Key:** paste value **4** (the same password you set in Railway).
-5. Save, then use PandaDoc's **"Send test"** — check your Discord channel and
-   the Railway logs.
+3. **Events:** check **Document state changed** (`document_state_changed`).
+4. **Include in payload:** check **Recipients** and **Pricing** (so messages
+   show the client name and amount).
+5. **Shared Key:** paste value **4** — the same one in Railway.
+6. Save.
 
-Done. Signatures now show up in Discord within seconds, and contracts left
-unsigned for 8 hours get a follow-up nudge.
+### 4. Test it
+There's usually no "send test" button — just push a real contract through:
+send a contract to yourself, sign it, and within seconds you'll get the
+`✅ Contract signed` message in Discord. Watch Railway's logs to see events
+arrive.
 
 ---
 
-## Tuning
+## Notes
 
 - Change the reminder window with `PANDADOC_REMINDER_HOURS` (e.g. `5`).
 - Add `DISCORD_NOTIFY_ROLE_ID` to @mention a team role on every alert.
-- Prefer a channel webhook over the bot? Set `DISCORD_WEBHOOK_URL` instead of
-  the bot token + channel ID.
+- Prefer a channel webhook over the bot? Set `DISCORD_WEBHOOK_URL` and skip the
+  bot token + channel ID.
+- Test the Discord side locally without PandaDoc: copy `.env.example` to `.env`,
+  fill in the Discord values, then run `npm run test-notify`.
 
-## Test the Discord side without PandaDoc
-
-If you have Node installed locally: copy `.env.example` to `.env`, fill in the
-Discord values, then:
-
-```
-npm install
-npm run test-notify
-```
-
-Two sample messages should land in your channel.
-
-## How it works (for the curious)
+## How it works
 
 - **Signed** = a PandaDoc webhook (`document_state_changed` → `document.completed`)
-  hits `POST /pandadoc/webhook`; the worker posts to Discord.
-- **Not signed** = every `PANDADOC_POLL_INTERVAL_MINUTES` the worker asks the
-  PandaDoc API for contracts still in `sent`/`viewed`, and messages Discord
-  about any older than the threshold. No database — PandaDoc is the source of
-  truth.
+  hits `POST /pandadoc/webhook`; the bot posts to Discord.
+- **Not signed** = every `PANDADOC_POLL_INTERVAL_MINUTES` the bot asks the
+  PandaDoc API for contracts still in `sent`/`viewed` and messages Discord about
+  any older than the threshold. No database — PandaDoc is the source of truth.
