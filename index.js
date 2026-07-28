@@ -65,6 +65,10 @@ const STATUS_VIEWED = 5;
 // both see the same contract in-window don't double-send.
 const remindedDocIds = new Set();
 
+// Contracts already announced as signed, so duplicate "completed" webhook
+// events (PandaDoc sends more than one) don't post the message twice.
+const completedNotifiedIds = new Set();
+
 // --------------------------------------------------------------------------
 // Formatting helpers (no libraries — Intl handles the timezone)
 // --------------------------------------------------------------------------
@@ -100,7 +104,7 @@ function timeAgo(iso) {
 function formatMoney(total) {
   if (!total || !total.amount) return "";
   const num = Number(total.amount);
-  if (!isFinite(num)) return "";
+  if (!isFinite(num) || num === 0) return "";
   const currency = total.currency || "USD";
   if (currency === "USD") {
     return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -253,12 +257,32 @@ async function handleWebhookEvents(events) {
     const doc = evt?.data;
     if (!doc?.id) continue;
     if (doc.status === "document.completed") {
-      console.log(`webhook: ${doc.id} completed — notifying Discord`);
+      if (completedNotifiedIds.has(doc.id)) {
+        console.log(`webhook: ${doc.id} completed (duplicate event) — already notified, skipping`);
+        continue;
+      }
+      completedNotifiedIds.add(doc.id);
       remindedDocIds.delete(doc.id);
-      await notifyDiscord(signedMessage(doc));
+      console.log(`webhook: ${doc.id} completed — notifying Discord`);
+      const enriched = await enrichForSigned(doc);
+      await notifyDiscord(signedMessage(enriched));
     } else {
       console.log(`webhook: ${doc.id} -> ${doc.status} (${evt.event}) — no notification`);
     }
+  }
+}
+
+// The webhook payload can omit the amount (grand_total). When we have API
+// access, fetch the full document to fill it in; fall back to the webhook data
+// on any error so a notification is never lost.
+async function enrichForSigned(doc) {
+  if (!process.env.PANDADOC_API_KEY) return doc;
+  try {
+    const details = await getDocumentDetails(doc.id);
+    return { ...doc, ...details };
+  } catch (err) {
+    console.error(`webhook: couldn't fetch details for ${doc.id}, using webhook data`, err.message ?? err);
+    return doc;
   }
 }
 
